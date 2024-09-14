@@ -7,8 +7,17 @@
 
 - **OAuth2 Authentication with MyAnimeList**: Log in with your MAL account to sync and manage your anime lists.
 - **Anime List Management**: View your anime lists directly within the application and add newly watched episodes.
-- **Automatic Posting to Bluesky**: After updating your anime progress, the tool automatically posts a message to Bluesky in the format "Watched X episodes of ANIME NAME".
+- **Automatic Posting to Bluesky**: After updating your anime progress, status or score, the tool automatically posts a message to Bluesky in the format "Watched X episodes of ANIME NAME". The same happens to Finished, and Dropped.
 - **Redis Caching**: Caching is implemented to reduce the number of requests to the MAL API.
+
+## Photos
+<details>
+
+![Lists](https://i.imgur.com/O4ueWcM.png)
+
+![Update](https://i.imgur.com/Ir9uOxM.png)
+
+</details>
 
 ## Prerequisites
 
