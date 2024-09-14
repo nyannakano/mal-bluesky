@@ -10,7 +10,7 @@
 - **Automatic Posting to Bluesky**: After updating your anime progress, status or score, the tool automatically posts a message to Bluesky in the format "Watched X episodes of ANIME NAME". The same happens to Finished, and Dropped.
 - **Redis Caching**: Caching is implemented to reduce the number of requests to the MAL API.
 
-## Photos
+## Images
 <details>
 
 ![Lists](https://i.imgur.com/O4ueWcM.png)
