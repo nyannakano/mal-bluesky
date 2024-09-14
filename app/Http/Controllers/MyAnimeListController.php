@@ -2,10 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\BlueSkyService;
 use App\Services\MyAnimeListService;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Http\Request;
 
 class MyAnimeListController extends Controller
@@ -43,26 +40,33 @@ class MyAnimeListController extends Controller
         return redirect('/')->with('success', 'Authenticated with MyAnimeList!');
     }
 
+    /**
+     * Get user's anime list
+     *
+     * Connects to MyAnimeList API to get user's anime list
+     */
     public function getUserAnimeList()
     {
-        $accessToken = session('mal_access_token');
-
-        if (!$accessToken) {
-            return redirect('/auth/mal')->with('error', 'You must authenticate first!');
-        }
+        $accessToken = $this->accessToken();
 
         $animeList = $this->myAnimeListService->getUserAnimeList($accessToken);
 
-        return view('anime-list', compact('animeList'));
+        $status = $this->myAnimeListService->getStatus();
+
+        return view('anime-list', compact('animeList', 'status'));
     }
 
+    /**
+     * Add episode to anime on MyAnimeList and create a new post at BlueSky
+     *
+     * @param $id
+     * @param $quantity
+     * @return \Illuminate\Contracts\Foundation\Application|\Illuminate\Foundation\Application|\Illuminate\Http\RedirectResponse|\Illuminate\Routing\Redirector
+     * @throws \GuzzleHttp\Exception\GuzzleException
+     */
     public function addEpisode($id, $quantity)
     {
-        $accessToken = session('mal_access_token');
-
-        if (!$accessToken) {
-            return redirect('/auth/mal')->with('error', 'You must authenticate first!');
-        }
+        $accessToken = $this->accessToken();
 
         $animeId = $id;
         $episode = $quantity;
@@ -87,12 +91,45 @@ class MyAnimeListController extends Controller
             return redirect('/')->with('error', 'You cannot watch more episodes than the anime has!');
         }
 
-        $response = $this->myAnimeListService->addEpisode($accessToken, $animeId, $numberOfEpisodesWatchedPlusEpisodesAdded, $url, $anime['title']);
+        $response = $this->myAnimeListService->addEpisode($accessToken, $animeId, $numberOfEpisodesWatchedPlusEpisodesAdded, $url, $anime);
 
         return redirect('/user/anime-list')->with('success', 'Episode added successfully!');
     }
 
-    public function getAnime($id)
+    /**
+     * Remove episode from anime on MyAnimeList
+     *
+     * @param $id
+     * @param $quantity
+     * @return \Illuminate\Contracts\Foundation\Application|\Illuminate\Foundation\Application|\Illuminate\Http\RedirectResponse|\Illuminate\Routing\Redirector
+     */
+    public function removeEpisode($id, $quantity)
+    {
+        $accessToken = $this->accessToken();
+
+        $animeId = $id;
+
+        $episode = $quantity;
+
+        $anime = $this->myAnimeListService->getAnime($accessToken, $animeId);
+
+        if (!isset($anime['id'])) {
+            return redirect('/')->with('error', 'Anime not found!');
+        }
+
+        $numberOfEpisodesWatched = $anime['my_list_status']['num_episodes_watched'];
+        $numberOfEpisodesWatchedPlusEpisodesAdded = $numberOfEpisodesWatched - $episode;
+
+        if ($numberOfEpisodesWatchedPlusEpisodesAdded < 0) {
+            return redirect('/')->with('error', 'You cannot remove more episodes than you have watched!');
+        }
+
+        $response = $this->myAnimeListService->removeEpisode($accessToken, $animeId, $numberOfEpisodesWatchedPlusEpisodesAdded);
+
+        return redirect('/user/anime-list')->with('success', 'Episode removed successfully!');
+    }
+
+    public function accessToken()
     {
         $accessToken = session('mal_access_token');
 
@@ -100,10 +137,35 @@ class MyAnimeListController extends Controller
             return redirect('/auth/mal')->with('error', 'You must authenticate first!');
         }
 
+        return $accessToken;
+    }
+
+    /**
+     * Update anime status on MyAnimeList, and depending on the status, create a new post at BlueSky
+     *
+     * @param $id
+     * @param Request $request
+     * @return \Illuminate\Contracts\Foundation\Application|\Illuminate\Foundation\Application|\Illuminate\Http\RedirectResponse|\Illuminate\Routing\Redirector
+     */
+    public function updateStatus($id, Request $request)
+    {
+        $accessToken = $this->accessToken();
+
         $animeId = $id;
+
+        $status = $request->input('status');
+        $score = $request->score;
 
         $anime = $this->myAnimeListService->getAnime($accessToken, $animeId);
 
-        return $anime;
+        if (!isset($anime['id'])) {
+            return redirect('/')->with('error', 'Anime not found!');
+        }
+
+        $url = $anime['main_picture']['large'];
+
+        $response = $this->myAnimeListService->updateAnimeStatus($accessToken, $animeId, $status, $score, $url, $anime);
+
+        return redirect('/user/anime-list')->with('success', 'Status updated successfully!');
     }
 }
