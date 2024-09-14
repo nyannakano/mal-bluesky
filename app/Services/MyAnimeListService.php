@@ -65,27 +65,21 @@ class MyAnimeListService
 
     public function getUserAnimeList($accessToken)
     {
-        $cacheKey = 'user_animelist_' . md5($accessToken);
+        $response = Http::withToken($accessToken)
+            ->get('https://api.myanimelist.net/v2/users/@me/animelist', [
+                'status' => 'watching',
+            ]);
 
-        $animeList = Cache::remember($cacheKey, 300, function () use ($accessToken) {
-            $response = Http::withToken($accessToken)
-                ->get('https://api.myanimelist.net/v2/users/@me/animelist', [
-                    'status' => 'watching',
-                ]);
+        $animeListResponse = $response->json();
+        $animeList = [];
 
-            $animeListResponse = $response->json();
-            $animeList = [];
+        foreach ($animeListResponse['data'] as $anime) {
+            $id = $anime['node']['id'];
 
-            foreach ($animeListResponse['data'] as $anime) {
-                $id = $anime['node']['id'];
+            $anime['node']['anime_data'] = $this->getAnime($accessToken, $id);
 
-                $anime['node']['anime_data'] = $this->getAnime($accessToken, $id);
-
-                $animeList[] = $anime;
-            }
-
-            return $animeList;
-        });
+            $animeList[] = $anime;
+        }
 
         return $animeList;
     }
@@ -93,7 +87,7 @@ class MyAnimeListService
     /**
      * @throws GuzzleException
      */
-    public function addEpisode($accessToken, $animeId, $episode, $url, $animeName)
+    public function addEpisode($accessToken, $animeId, $episode, $url, $anime)
     {
         $data = [
             'num_watched_episodes' => $episode,
@@ -101,15 +95,21 @@ class MyAnimeListService
 
         $myAnimeListUrl = 'https://myanimelist.net/anime/' . $animeId;
 
-        $response = Http::withToken($accessToken)
-            ->asForm()
-            ->patch('https://api.myanimelist.net/v2/anime/' . $animeId . '/my_list_status', $data);
+        $response = $this->sendToMalEpisodes($data, $animeId, $accessToken);
 
         if ($response->successful()) {
             Cache::forget('anime_' . $animeId);
 
+            $this->getAnime($accessToken, $animeId);
+
+            if ($episode == $anime['num_episodes']) {
+                $this->downloadImage($url, $animeId . '.jpg');
+                $this->blueSkyPost('Finished watching ' . $anime['title'], public_path('images/' . $animeId . '.jpg'), $myAnimeListUrl);
+                return $response->json();
+            }
+
             $this->downloadImage($url, $animeId . '.jpg');
-            $this->blueSkyPost('Watched ' . $episode . ' episodes of ' . $animeName, public_path('images/' . $animeId . '.jpg'), $myAnimeListUrl);
+            $this->blueSkyPost('Watched ' . $episode . ' episodes of ' . $anime['title'], public_path('images/' . $animeId . '.jpg'), $myAnimeListUrl);
             return $response->json();
         } else {
             return [
@@ -123,7 +123,7 @@ class MyAnimeListService
     {
         $cacheKey = 'anime_' . $animeId;
 
-        $animeData = Cache::remember($cacheKey, 300, function () use ($accessToken, $animeId) {
+        $animeData = Cache::remember($cacheKey, 3000, function () use ($accessToken, $animeId) {
             $response = Http::withToken($accessToken)
                 ->get('https://api.myanimelist.net/v2/anime/' . $animeId, [
                     'fields' => 'id,title,num_episodes,my_list_status',
@@ -131,6 +131,8 @@ class MyAnimeListService
 
             return $response->json();
         });
+
+       $animeData['status_title'] = $this->getStatus()[$animeData['my_list_status']['status']];
 
         return $animeData;
     }
@@ -158,5 +160,76 @@ class MyAnimeListService
         $blueSkyService = new BlueSkyService();
 
         $blueSkyService->createPost($message, $path, $url);
+    }
+
+    public function removeEpisode($accessToken, $animeId, $episode)
+    {
+        $data = [
+            'num_watched_episodes' => $episode,
+        ];
+
+        $response = $this->sendToMalEpisodes($data, $animeId, $accessToken);
+
+        if ($response->successful()) {
+            Cache::forget('anime_' . $animeId);
+
+            $this->getAnime($accessToken, $animeId);
+
+            return $response->json();
+        } else {
+            return [
+                'error' => $response->status(),
+                'message' => $response->body(),
+            ];
+        }
+    }
+
+    public function updateAnimeStatus($accessToken, $animeId, $status, $score, $url, $anime)
+    {
+        $data = [
+            'status' => $status,
+            'score' => $score,
+        ];
+
+        $response = $this->sendToMalEpisodes($data, $animeId, $accessToken);
+
+        if ($response->successful()) {
+            Cache::forget('anime_' . $animeId);
+
+            $this->getAnime($accessToken, $animeId);
+
+            $this->downloadImage($url, $animeId . '.jpg');
+
+            if ($status == 'completed') {
+                $this->blueSkyPost('Finished watching ' . $anime['title'] . ' ' . $score . '/10 ', public_path('images/' . $animeId . '.jpg'), 'https://myanimelist.net/anime/' . $animeId);
+            } elseif ($status == 'dropped') {
+                $this->blueSkyPost('Dropped ' . $anime['title'], public_path('images/' . $animeId . '.jpg'), 'https://myanimelist.net/anime/' . $animeId);
+            }
+
+            return $response->json();
+        } else {
+            return [
+                'error' => $response->status(),
+                'message' => $response->body(),
+            ];
+        }
+    }
+
+    public function sendToMalEpisodes($data, $animeId, $accessToken)
+    {
+        return Http::withToken($accessToken)
+            ->asForm()
+            ->patch('https://api.myanimelist.net/v2/anime/' . $animeId . '/my_list_status', $data);
+    }
+
+    public function getStatus()
+    {
+        return [
+            'watching' => 'Watching',
+            'completed' => 'Completed',
+            'on_hold' => 'On-Hold',
+            'dropped' => 'Dropped',
+            'plan_to_watch' => 'Plan to Watch',
+        ];
     }
 }

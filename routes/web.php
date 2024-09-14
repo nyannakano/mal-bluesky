@@ -20,6 +20,8 @@ Route::get('/', function () {
 
 Route::get('/auth/mal', [MyAnimeListController::class, 'redirectToProvider']);
 Route::get('/auth/mal/callback', [MyAnimeListController::class, 'handleProviderCallback']);
+
 Route::get('/user/anime-list', [MyAnimeListController::class, 'getUserAnimeList']);
 Route::post('/user/anime/add-episode/{id}/{quantity}', [MyAnimeListController::class, 'addEpisode'])->name('add-episode');
-Route::get('/anime/{id}', [MyAnimeListController::class, 'getAnime']);
+Route::post('/anime/remove-episode/{id}/{quantity}', [MyAnimeListController::class, 'removeEpisode'])->name('remove-episode');
+Route::patch('/anime/update-status/{id}', [MyAnimeListController::class, 'updateStatus'])->name('update-status');
